@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AGROMIX · Controle de Absenteísmo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --ink:#15241b; --leaf:#1f5e3d; --leaf-d:#184a30; --sprout:#4f9d5d;
+  --paper:#f4f7f3; --surface:#ffffff; --line:#d9e2da; --line-2:#eef2ee;
+  --muted:#5c6b5e; --muted-2:#8a978c;
+  --clay:#bd4a30; --clay-bg:#fbeae6; --amber:#c98a12; --amber-bg:#fbf2dc;
+  --leaf-bg:#e7f1e9; --info:#27618a;
+  --shadow:0 1px 2px rgba(21,36,27,.04),0 8px 24px rgba(21,36,27,.06);
+  --shadow-lg:0 24px 60px rgba(21,36,27,.22);
+  --r:14px; --r-sm:10px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;line-height:1.5}
+button{font-family:inherit;cursor:pointer;border:none;background:none}
+input,select,textarea{font-family:inherit;font-size:15px;color:var(--ink)}
+.mono{font-family:'IBM Plex Mono',monospace}
+.hidden{display:none!important}
+
+/* ---------- LOGIN ---------- */
+#login{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:20px;
+  background:radial-gradient(120% 90% at 80% -10%,#2c7349 0%,#1f5e3d 38%,#163f2a 100%);overflow:hidden}
+#login .contours{position:absolute;inset:0;opacity:.22;pointer-events:none}
+.login-card{position:relative;width:100%;max-width:392px;background:var(--surface);border-radius:20px;
+  padding:38px 34px 30px;box-shadow:var(--shadow-lg);animation:rise .5s cubic-bezier(.2,.8,.2,1)}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:26px}
+.brand .mark{width:42px;height:42px;border-radius:11px;background:linear-gradient(150deg,var(--sprout),var(--leaf));
+  display:grid;place-items:center;flex:none;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.brand .mark svg{width:24px;height:24px}
+.brand .name{font-family:Archivo;font-weight:800;font-size:23px;letter-spacing:-.02em;line-height:1}
+.brand .sub{font-size:11.5px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:3px;font-weight:600}
+.login-card h1{font-family:Archivo;font-weight:700;font-size:19px;margin:0 0 3px}
+.login-card .lead{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+.field{margin-bottom:15px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:6px}
+.field .ipt,.field input,.field select,.field textarea{width:100%;padding:11px 13px;border:1.5px solid var(--line);
+  border-radius:var(--r-sm);background:var(--surface);outline:none;transition:border-color .15s,box-shadow .15s}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--leaf);box-shadow:0 0 0 3px var(--leaf-bg)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-weight:600;font-size:14.5px;
+  padding:11px 18px;border-radius:var(--r-sm);transition:transform .08s,background .15s,box-shadow .15s}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--leaf);color:#fff;box-shadow:0 2px 0 var(--leaf-d)}
+.btn-primary:hover{background:#236a45}
+.btn-block{width:100%;padding:13px}
+.btn-ghost{background:var(--surface);border:1.5px solid var(--line);color:var(--ink)}
+.btn-ghost:hover{border-color:var(--muted-2);background:#fafcfa}
+.btn-danger{background:var(--clay);color:#fff}
+.btn-sm{padding:7px 12px;font-size:13px;border-radius:8px}
+.login-hint{margin-top:16px;font-size:12px;color:var(--muted);text-align:center;background:var(--leaf-bg);
+  padding:9px 12px;border-radius:9px}
+.login-hint b{color:var(--leaf-d)}
+.err{color:var(--clay);font-size:12.5px;margin-top:10px;min-height:1px;text-align:center;font-weight:500}
+
+/* ---------- APP SHELL ---------- */
+#app{display:grid;grid-template-columns:248px 1fr;grid-template-rows:auto 1fr;min-height:100vh;
+  grid-template-areas:"side top" "side main"}
+.topbar{grid-area:top;display:flex;align-items:center;gap:14px;padding:14px 26px;background:var(--surface);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30}
+.topbar .pagetitle{font-family:Archivo;font-weight:700;font-size:18px;letter-spacing:-.01em}
+.topbar .pagesub{font-size:12.5px;color:var(--muted)}
+.topbar .spacer{flex:1}
+.yearchip{font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;color:var(--leaf-d);background:var(--leaf-bg);
+  padding:6px 11px;border-radius:8px}
+.user{display:flex;align-items:center;gap:9px;padding:5px 6px 5px 11px;border-radius:10px;border:1px solid var(--line)}
+.user .av{width:28px;height:28px;border-radius:8px;background:var(--leaf);color:#fff;display:grid;place-items:center;
+  font-weight:700;font-size:13px;font-family:Archivo}
+.user .uname{font-size:13px;font-weight:600}
+.icon-btn{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:var(--muted);border:1px solid transparent}
+.icon-btn:hover{background:var(--line-2);color:var(--ink)}
+.menu-toggle{display:none}
+
+/* sidebar */
+.sidebar{grid-area:side;background:#FFC000;color:#003366;padding:20px 14px;display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh}
+.sidebar .brand-s{display:flex;align-items:center;gap:10px;padding:4px 8px 22px}
+.sidebar .brand-s .mark{width:36px;height:36px;border-radius:9px;background:rgba(0,0,0,.15);display:grid;place-items:center;flex:none}
+.sidebar .brand-s .mark svg{width:21px;height:21px}
+.sidebar .brand-s .name{font-family:Archivo;font-weight:800;font-size:19px;color:#003366;letter-spacing:-.02em;line-height:1}
+.sidebar .brand-s .sub{font-size:9.5px;letter-spacing:.16em;color:#003366;text-transform:uppercase;margin-top:3px;font-weight:600;opacity:.7}
+.nav-label{font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;color:#003366;margin:14px 10px 7px;font-weight:600;opacity:.7}
+.nav-item{display:flex;align-items:center;gap:11px;width:100%;text-align:left;padding:10px 11px;border-radius:10px;
+  color:#003366;font-size:14px;font-weight:600;margin-bottom:2px;transition:background .14s,color .14s}
+.nav-item svg{width:18px;height:18px;flex:none;opacity:.8}
+.nav-item:hover{background:rgba(0,51,102,.1);color:#001f4d}
+.nav-item.active{background:#003366;color:#FFC000}
+.nav-item.active svg{opacity:1}
+.sidebar .foot{margin-top:auto;padding:12px 10px 2px;font-size:11px;color:#003366;opacity:.7;border-top:1px solid rgba(0,51,102,.3)}
+
+/* main */
+.main{grid-area:main;padding:26px;max-width:1180px;width:100%}
+.view-head{margin-bottom:20px}
+.view-head h2{font-family:Archivo;font-weight:700;font-size:22px;margin:0 0 3px;letter-spacing:-.01em}
+.view-head p{color:var(--muted);font-size:13.5px;margin:0}
+
+/* cards / quick actions */
+.qa-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px}
+.qa{display:flex;flex-direction:column;gap:10px;align-items:flex-start;text-align:left;padding:18px;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);transition:transform .1s,border-color .14s,box-shadow .14s}
+.qa:hover{transform:translateY(-2px);border-color:var(--sprout);box-shadow:0 10px 30px rgba(31,94,61,.12)}
+.qa .ic{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--leaf-bg);color:var(--leaf-d)}
+.qa .ic svg{width:22px;height:22px}
+.qa h3{font-family:Archivo;font-weight:700;font-size:15.5px;margin:0}
+.qa p{font-size:12.5px;color:var(--muted);margin:0}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:24px}
+.kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:15px 15px 14px;box-shadow:var(--shadow)}
+.kpi .lab{font-size:11.5px;color:var(--muted);font-weight:600;letter-spacing:.02em;display:flex;align-items:center;gap:6px;margin-bottom:9px}
+.kpi .dot{width:8px;height:8px;border-radius:3px;flex:none}
+.kpi .val{font-family:'IBM Plex Mono';font-weight:600;font-size:27px;letter-spacing:-.02em;line-height:1}
+.kpi .unit{font-size:12px;color:var(--muted-2);font-family:Inter;font-weight:500;margin-left:3px}
+.kpi .acc{font-size:10.5px;color:var(--muted-2);margin-top:5px;text-transform:uppercase;letter-spacing:.08em}
+
+/* panel + table */
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);margin-bottom:22px;overflow:hidden}
+.panel-h{display:flex;align-items:center;gap:12px;padding:15px 18px;border-bottom:1px solid var(--line-2)}
+.panel-h h3{font-family:Archivo;font-weight:700;font-size:15px;margin:0}
+.panel-h .note{font-size:12px;color:var(--muted)}
+.panel-h .spacer{flex:1}
+.panel-b{padding:6px 4px}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:10px 13px;text-align:left;white-space:nowrap}
+thead th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600;
+  border-bottom:1px solid var(--line);background:#fbfdfb;position:sticky;top:0}
+tbody tr{border-bottom:1px solid var(--line-2)}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:#fafcfa}
+td.num,th.num{text-align:center;font-family:'IBM Plex Mono';font-weight:500}
+tr.total-row td{font-weight:700;background:#f4f8f5;border-top:2px solid var(--line)}
+tr.total-row td.num{color:var(--leaf-d)}
+
+/* chips */
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:600;font-family:Inter}
+.chip .cd{width:7px;height:7px;border-radius:50%}
+.t-f{background:var(--clay-bg);color:var(--clay)} .t-f .cd{background:var(--clay)}
+.t-fj{background:var(--amber-bg);color:var(--amber)} .t-fj .cd{background:var(--amber)}
+.t-at{background:#e6eef5;color:var(--info)} .t-at .cd{background:var(--info)}
+.t-fe{background:var(--leaf-bg);color:var(--leaf-d)} .t-fe .cd{background:var(--leaf)}
+.t-lc{background:#ece6f5;color:#5a3aa6} .t-lc .cd{background:#7a52d6}
+.mat-chip{font-family:'IBM Plex Mono';font-weight:600;font-size:12px;background:var(--line-2);color:var(--ink);padding:3px 8px;border-radius:7px}
+.st{display:inline-flex;padding:3px 10px;border-radius:999px;font-size:12px;font-weight:600}
+.st-Pendente{background:#f0f2ee;color:var(--muted)} .st-Aprovada{background:var(--leaf-bg);color:var(--leaf-d)}
+.st-Realizada{background:#e6eef5;color:var(--info)} .st-Cancelada{background:var(--clay-bg);color:var(--clay)}
+.st-Ativo{background:var(--leaf-bg);color:var(--leaf-d)} .st-Inativo{background:#f0f2ee;color:var(--muted)}
+
+/* heatmap */
+.heat th,.heat td{padding:7px 6px;text-align:center}
+.heat td.nm{text-align:left;font-weight:500;white-space:nowrap;max-width:230px;overflow:hidden;text-overflow:ellipsis}
+.heat td.dp{text-align:left}
+.hc{display:inline-grid;place-items:center;width:30px;height:26px;border-radius:6px;font-family:'IBM Plex Mono';font-weight:600;font-size:12.5px;margin:0 auto}
+.h0{color:#cfd8d0} .h1{background:var(--amber-bg);color:var(--amber)} .h2{background:var(--clay-bg);color:var(--clay)}
+.heat .tot{font-family:'IBM Plex Mono';font-weight:700;color:var(--leaf-d)}
+
+/* form */
+.form-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);
+  padding:22px 24px;max-width:760px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-grid .full{grid-column:1/-1}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:18px}
+.legend .chip{cursor:default}
+.req{color:var(--clay)}
+.help{font-size:11.5px;color:var(--muted-2);margin-top:5px}
+.form-actions{display:flex;gap:10px;margin-top:22px;align-items:center}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+.toolbar .grow{flex:1;min-width:160px}
+.search{position:relative}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;color:var(--muted-2)}
+.search input{width:100%;padding:10px 12px 10px 34px;border:1.5px solid var(--line);border-radius:var(--r-sm);outline:none;background:var(--surface)}
+.search input:focus{border-color:var(--leaf);box-shadow:0 0 0 3px var(--leaf-bg)}
+select.flt{padding:10px 12px;border:1.5px solid var(--line);border-radius:var(--r-sm);background:var(--surface);outline:none}
+select.flt:focus{border-color:var(--leaf)}
+.row-actions{display:flex;gap:6px}
+.row-actions button{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--muted);border:1px solid var(--line)}
+.row-actions button:hover{background:var(--line-2);color:var(--ink)}
+.row-actions button.del:hover{background:var(--clay-bg);color:var(--clay);border-color:#f0cabf}
+.empty{text-align:center;padding:46px 20px;color:var(--muted)}
+.empty svg{width:40px;height:40px;color:var(--line);margin-bottom:10px}
+.empty h4{font-family:Archivo;font-weight:700;font-size:15px;color:var(--ink);margin:0 0 4px}
+.editing-banner{display:flex;align-items:center;gap:8px;background:var(--amber-bg);color:var(--amber);
+  padding:8px 12px;border-radius:9px;font-size:13px;font-weight:600;margin-bottom:16px}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(21,36,27,.5);backdrop-filter:blur(2px);display:flex;
+  align-items:center;justify-content:center;padding:18px;z-index:60;animation:fade .15s}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.modal{background:var(--surface);border-radius:18px;box-shadow:var(--shadow-lg);width:100%;max-width:520px;
+  max-height:90vh;overflow:auto;animation:rise .25s cubic-bezier(.2,.8,.2,1)}
+.modal-h{display:flex;align-items:center;gap:10px;padding:18px 22px;border-bottom:1px solid var(--line-2)}
+.modal-h h3{font-family:Archivo;font-weight:700;font-size:17px;margin:0}
+.modal-h .x{margin-left:auto}
+.modal-b{padding:20px 22px}
+.modal-f{display:flex;gap:10px;justify-content:flex-end;padding:16px 22px;border-top:1px solid var(--line-2)}
+.confirm-ic{width:44px;height:44px;border-radius:12px;background:var(--clay-bg);color:var(--clay);display:grid;place-items:center;margin-bottom:14px}
+.confirm-ic svg{width:24px;height:24px}
+
+/* toast */
+#toasts{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:90;display:flex;flex-direction:column;gap:8px;align-items:center}
+.toast{display:flex;align-items:center;gap:9px;background:var(--ink);color:#fff;padding:11px 16px;border-radius:11px;
+  font-size:13.5px;font-weight:500;box-shadow:var(--shadow-lg);animation:toastin .25s cubic-bezier(.2,.8,.2,1)}
+.toast svg{width:17px;height:17px;color:var(--sprout)}
+.toast.err svg{color:#ff9b7a}
+@keyframes toastin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* responsive */
+@media(max-width:900px){
+  #app{grid-template-columns:1fr;grid-template-areas:"top" "main"}
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:262px;z-index:80;transform:translateX(-100%);transition:transform .25s;height:100vh}
+  .sidebar.open{transform:none}
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:70;animation:fade .15s}
+  .menu-toggle{display:grid}
+  .kpi-grid{grid-template-columns:repeat(2,1fr)}
+  .qa-grid{grid-template-columns:1fr}
+  .form-grid{grid-template-columns:1fr}
+  .main{padding:18px 15px}
+  .topbar{padding:12px 15px}
+  .topbar .pagesub{display:none}
+  .user .uname{display:none}
+}
+@media(max-width:560px){ .kpi-grid{grid-template-columns:1fr 1fr} .yearchip{display:none} }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login">
+  <svg class="contours" preserveAspectRatio="none" viewBox="0 0 800 600">
+    <g fill="none" stroke="#ffffff" stroke-width="1.1">
+      <path d="M-20 120 C 180 60 320 180 520 120 S 820 60 900 140"/>
+      <path d="M-20 200 C 180 140 320 260 520 200 S 820 140 900 220"/>
+      <path d="M-20 280 C 180 220 320 340 520 280 S 820 220 900 300"/>
+      <path d="M-20 360 C 180 300 320 420 520 360 S 820 300 900 380"/>
+      <path d="M-20 440 C 180 380 320 500 520 440 S 820 380 900 460"/>
+      <path d="M-20 520 C 180 460 320 580 520 520 S 820 460 900 540"/>
+    </g>
+  </svg>
+  <div class="login-card">
+    <div class="brand">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c0-5 0-9 0-13M12 8c2-3 5-4 8-4 0 4-2 7-5 8-1.3.4-2.3.3-3 0M12 12c-1.7-2.5-4.3-3.5-7-3 0 3.5 1.7 6 4.3 6.8 1 .3 1.9.3 2.7.2" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div><div class="name">AGROMIX</div><div class="sub">Gestão de Pessoas</div></div>
+    </div>
+    <h1>Acessar o sistema</h1>
+    <p class="lead">Controle de Absenteísmo · Exercício 2026</p>
+    <div class="field"><label for="lg-user">Usuário</label><input id="lg-user" autocomplete="username" placeholder="admin"></div>
+    <div class="field"><label for="lg-pass">Senha</label><input id="lg-pass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+    <button class="btn btn-primary btn-block" id="lg-btn">Entrar</button>
+    <div class="err" id="lg-err"></div>
+    <div class="login-hint">Acesso inicial — usuário <b>admin</b> · senha <b>agromix2026</b><br>Você pode alterar a senha depois de entrar.</div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand-s">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M12 21c0-5 0-9 0-13M12 8c2-3 5-4 8-4 0 4-2 7-5 8-1.3.4-2.3.3-3 0M12 12c-1.7-2.5-4.3-3.5-7-3 0 3.5 1.7 6 4.3 6.8 1 .3 1.9.3 2.7.2" stroke="#FFC000" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+      <div><div class="name">AGROMIX</div><div class="sub">Absenteísmo 2026</div></div>
+    </div>
+    <div class="nav-label">Início</div>
+    <button class="nav-item" data-nav="inicio"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10.5 12 4l9 6.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>Painel geral</button>
+    <div class="nav-label">Lançar</div>
+    <button class="nav-item" data-nav="lancar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Lançar ausência</button>
+    <button class="nav-item" data-nav="ferias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 18h16M6 18c0-5 3-8 6-9M6 18c-1-4 1-8 4-9M12 9c2-3 6-4 9-3-1 4-4 6-7 6" stroke-linecap="round" stroke-linejoin="round"/></svg>Férias programadas</button>
+    <div class="nav-label">Consultar</div>
+    <button class="nav-item" data-nav="lancamentos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10" stroke-linecap="round"/></svg>Lançamentos</button>
+    <button class="nav-item" data-nav="funcionarios"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.9-4.5 5.5-4.5S14 16 14.5 19M16 8.5a3 3 0 0 0 0-1M16.5 14.2c2 .4 3.6 1.8 4 4.8" stroke-linecap="round"/></svg>Funcionários</button>
+    <div class="foot">Os dados ficam salvos neste navegador e podem ser exportados para Excel.</div>
+  </aside>
+
+  <header class="topbar">
+    <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16" stroke-linecap="round"/></svg></button>
+    <div><div class="pagetitle" id="pageTitle">Painel geral</div><div class="pagesub" id="pageSub">Indicadores de absenteísmo</div></div>
+    <div class="spacer"></div>
+    <span class="yearchip">2026</span>
+    <button class="icon-btn" id="cfgBtn" title="Conta e senha"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7 7 0 0 0-1.7-1l-.3-2.6h-4l-.3 2.6a7 7 0 0 0-1.7 1l-2.3-1-2 3.4L4 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7 7 0 0 0 1.7 1l.3 2.6h4l.3-2.6a7 7 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z" stroke-linejoin="round"/></svg></button>
+    <div class="user"><div class="av" id="userAv">A</div><span class="uname" id="userName">admin</span>
+      <button class="icon-btn" id="logoutBtn" title="Sair"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h4M16 17l5-5-5-5M21 12H9" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    </div>
+  </header>
+
+  <main class="main" id="view"></main>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ====================== DADOS INICIAIS (da planilha) ====================== */
+const SEED_FUNCS = [{"matricula":"PJ","nome":"Aldair Da Silva Bezerra","cargo":"Qualidade","departamento":"ADMINISTRAÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"52","nome":"Altemario Oliveira da Silva","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"37","nome":"Andre de Freitas Siqueira","cargo":"Diretor","departamento":"DIREÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"55","nome":"Antônio Maciel de Sousa","cargo":"Faxineiro","departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"4","nome":"Antônio Nerivaldo Pontes","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"67","nome":"Arinergia Maria de Oliveira","cargo":"GERENTE DE PROJETOS","departamento":"ADMINISTRAÇÃO","localidade":"Limoeiro, CE","status":"Ativo"},{"matricula":"79","nome":"Emanuel Bruno Bezerra de Aquino","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"77","nome":"Emanuele Lucas de Moura","cargo":"TÉCNICO (A) AGROPECUÁRIO","departamento":"TECNICO","localidade":"Limoeiro, CE","status":"Ativo"},{"matricula":"68","nome":"Francisco Alvaro Reges","cargo":"TECNICO AGRICOLA","departamento":"TECNICO","localidade":"Limoeiro, CE","status":"Ativo"},{"matricula":"41","nome":"Francisco Eudes Lima do Nascimento","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"64","nome":"Françuedes Lima do Nascimento","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"70","nome":"Jefferson dos Santos Lopes","cargo":"Auxiliar Administrativo","departamento":"ADMINISTRAÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"53","nome":"José Derlano Nunes da Silva","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"24","nome":"José Gutemberg Barros da Silva Filho","cargo":"Operador de Máquina","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"75","nome":"João Pedro","cargo":"Auxiliar Administrativo","departamento":"VENDAS","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"47","nome":"João Rodrigues da Silva Neto","cargo":"Analista Financeiro","departamento":"ADMINISTRAÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"12","nome":"Júlio César Pereira de Souza","cargo":"Operador de Máquina","departamento":"CALDEIRA","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"69","nome":"Keivianne da Silva Lima Reges","cargo":"TECNICO AGRICOLA","departamento":"TECNICO","localidade":"Limoeiro, CE","status":"Ativo"},{"matricula":"72","nome":"Leonardo Soares Barbosa Pinto","cargo":"Gerente Geral","departamento":"ADMINISTRAÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"65","nome":"Luana Oliveira Costa","cargo":"Assistente Técnico Comercial","departamento":"VENDAS","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"60","nome":"Marclécio de Souza Vieira","cargo":"Assistente Administrativo","departamento":"ADMINISTRAÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"66","nome":"Milena Teixeira Lima","cargo":"Auxiliar de Vendas","departamento":"VENDAS","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"78","nome":"Raimundo Nonato de Sousa Filho","cargo":"TRABALHADOR AGROPECURARIO EM GERAL","departamento":"SERVIÇOS GERAIS","localidade":"Limoeiro, CE","status":"Ativo"},{"matricula":"61","nome":"Renato Rodrigo Silva","cargo":"Assistente de Vendas","departamento":"VENDAS","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"80","nome":"Thalia Brenda dos Santos Silva","cargo":"Auxiliar Administrativo","departamento":"ADMINISTRAÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"22","nome":"Tiago de Sousa Silvestre","cargo":"Auxiliar de Produção","departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","status":"Ativo"},{"matricula":"59","nome":"Yago Cavalcante Acioly","cargo":"Consultor de Vendas","departamento":"VENDAS","localidade":"Maracanaú, CE","status":"Ativo"}];
+const SEED_LANC = [{"matricula":"22","nome":"Tiago de Sousa Silvestre","data":"2026-04-24","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"22","nome":"Tiago de Sousa Silvestre","data":"2026-04-16","tipo":"FJ","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"76","nome":"Josué Silvério de Araújo Silva","data":"2026-04-06","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"76","nome":"Josué Silvério de Araújo Silva","data":"2026-04-07","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"76","nome":"Josué Silvério de Araújo Silva","data":"2026-04-27","tipo":"F","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"61","nome":"Renato Rodrigo Silva","data":"2026-04-08","tipo":"AT","dias":1,"departamento":"VENDAS","localidade":"Maracanaú, CE","obs":""},{"matricula":"61","nome":"Renato Rodrigo Silva","data":"2026-04-09","tipo":"AT","dias":1,"departamento":"VENDAS","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-04-01","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-04-02","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-04-16","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-04-14","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-04-27","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-04-28","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"24","nome":"José Gutemberg Barros da Silva Filho","data":"2026-04-22","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"24","nome":"José Gutemberg Barros da Silva Filho","data":"2026-04-27","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"24","nome":"José Gutemberg Barros da Silva Filho","data":"2026-04-28","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"41","nome":"Francisco Eudes Lima do Nascimento","data":"2026-04-06","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"41","nome":"Francisco Eudes Lima do Nascimento","data":"2026-04-07","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"41","nome":"Francisco Eudes Lima do Nascimento","data":"2026-04-30","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"55","nome":"Antônio Maciel de Sousa","data":"2026-04-10","tipo":"AT","dias":1,"departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","obs":""},{"matricula":"55","nome":"Antônio Maciel de Sousa","data":"2026-04-11","tipo":"AT","dias":1,"departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","obs":""},{"matricula":"55","nome":"Antônio Maciel de Sousa","data":"2026-04-22","tipo":"AT","dias":1,"departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","obs":""},{"matricula":"55","nome":"Antônio Maciel de Sousa","data":"2026-04-13","tipo":"FJ","dias":1,"departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","obs":""},{"matricula":"55","nome":"Antônio Maciel de Sousa","data":"2026-04-24","tipo":"AT","dias":1,"departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","obs":""},{"matricula":"55","nome":"Antônio Maciel de Sousa","data":"2026-04-25","tipo":"AT","dias":1,"departamento":"SERVIÇOS GERAIS","localidade":"Maracanaú, CE","obs":""},{"matricula":"53","nome":"José Derlano Nunes da Silva","data":"2026-04-08","tipo":"F","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"53","nome":"José Derlano Nunes da Silva","data":"2026-04-09","tipo":"F","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"66","nome":"Milena Teixeira Lima","data":"2026-05-26","tipo":"AT","dias":1,"departamento":"VENDAS","localidade":"Maracanaú, CE","obs":""},{"matricula":"64","nome":"Françuedes Lima do Nascimento","data":"2026-05-12","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"64","nome":"Françuedes Lima do Nascimento","data":"2026-05-13","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"64","nome":"Françuedes Lima do Nascimento","data":"2026-05-14","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"64","nome":"Françuedes Lima do Nascimento","data":"2026-05-15","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"64","nome":"Françuedes Lima do Nascimento","data":"2026-05-16","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"64","nome":"Françuedes Lima do Nascimento","data":"2026-05-17","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"59","nome":"Yago Cavalcante Acioly","data":"2026-05-13","tipo":"FJ","dias":1,"departamento":"VENDAS","localidade":"Maracanaú, CE","obs":""},{"matricula":"59","nome":"Yago Cavalcante Acioly","data":"2026-05-14","tipo":"FJ","dias":1,"departamento":"VENDAS","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-05-07","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-05-08","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"52","nome":"Altemario Oliveira da Silva","data":"2026-05-06","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""},{"matricula":"24","nome":"José Gutemberg Barros da Silva Filho","data":"2026-05-08","tipo":"AT","dias":1,"departamento":"PRODUÇÃO","localidade":"Maracanaú, CE","obs":""}];
+
+const TIPOS = {
+  F :{label:"Falta",             cls:"t-f" },
+  FJ:{label:"Falta Justificada", cls:"t-fj"},
+  AT:{label:"Atestado",          cls:"t-at"},
+  FE:{label:"Férias",            cls:"t-fe"},
+  LC:{label:"Licença",           cls:"t-lc"}
+};
+const DEPTS  = ["ADMINISTRAÇÃO","CALDEIRA","DIREÇÃO","PRODUÇÃO","SERVIÇOS GERAIS","TECNICO","VENDAS"];
+const LOCS   = ["Maracanaú, CE","Limoeiro, CE"];
+const STATUS_FERIAS = ["Pendente","Aprovada","Realizada","Cancelada"];
+const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+const YEAR = 2026, DIAS_UTEIS = 264;
+const PAGE_INFO = {
+  inicio:{t:"Painel geral",s:"Indicadores de absenteísmo · acumulado 2026"},
+  lancar:{t:"Lançar ausência",s:"Registrar falta, atestado, férias ou licença"},
+  lancamentos:{t:"Lançamentos",s:"Consultar, editar e exportar registros"},
+  funcionarios:{t:"Funcionários",s:"Cadastro de funcionários ativos"},
+  ferias:{t:"Férias programadas",s:"Controle de férias e prazos"}
+};
+
+/* ====================== CONFIG SUPABASE ======================
+   >>> TROQUE pelos valores do SEU projeto quando for pra produção. <<<
+   Só precisa da URL do projeto e da chave ANON (publishable).
+   NUNCA coloque aqui a service_role / secret key.                       */
+const SUPABASE_URL      = "https://iwravbxhewlrdurodfnu.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3cmF2YnhoZXdscmR1cm9kZm51Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2NzM1MTcsImV4cCI6MjA5NzI0OTUxN30.tFVy0gVVt3rJhhXBOJBnan0kyqEx9zwhVYAzdqOXzBE";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ====================== ARMAZENAMENTO (Supabase) ====================== */
+const K = {funcs:"agromix:funcionarios",lanc:"agromix:lancamentos",ferias:"agromix:ferias",auth:"agromix:auth",session:"agromix:session",seeded:"agromix:seeded"};
+
+/* mapeamento chave -> tabela e chave primária */
+const TABLE = {[K.funcs]:"funcionarios",[K.lanc]:"lancamentos",[K.ferias]:"ferias"};
+const PK    = {funcionarios:"matricula",lancamentos:"id",ferias:"matricula"};
+
+/* conversão app <-> linha do banco (datas vazias viram NULL e vice-versa) */
+const dnull = v => (v===""||v==null) ? null : v;
+const dstr  = v => v==null ? "" : v;
+const MAP = {
+  funcionarios:{
+    toRow:f=>({matricula:f.matricula,nome:f.nome,cargo:f.cargo,departamento:f.departamento,localidade:f.localidade,status:f.status}),
+    toApp:r=>({matricula:r.matricula,nome:r.nome,cargo:r.cargo,departamento:r.departamento,localidade:r.localidade,status:r.status})
+  },
+  lancamentos:{
+    toRow:l=>({id:l.id,matricula:l.matricula,nome:l.nome,data:dnull(l.data),tipo:l.tipo,dias:l.dias,departamento:l.departamento,localidade:l.localidade,obs:l.obs}),
+    toApp:r=>({id:r.id,matricula:r.matricula,nome:r.nome,data:dstr(r.data),tipo:r.tipo,dias:r.dias,departamento:r.departamento,localidade:r.localidade,obs:dstr(r.obs)})
+  },
+  ferias:{
+    toRow:r=>({matricula:r.matricula,nome:r.nome,departamento:r.departamento,ultimo_dia:dnull(r.ultimoDia),inicio:dnull(r.inicio),fim:dnull(r.fim),status:r.status,obs:dnull(r.obs)}),
+    toApp:r=>({matricula:r.matricula,nome:r.nome,departamento:r.departamento,ultimoDia:dstr(r.ultimo_dia),inicio:dstr(r.inicio),fim:dstr(r.fim),status:r.status||"Pendente",obs:dstr(r.obs)})
+  }
+};
+
+/* dados não-tabulares (auth/sessão) ficam em memória nesta versão de teste */
+const MEM = {[K.auth]:{user:"admin",pass:obscure("agromix2026")},[K.session]:null,[K.seeded]:true};
+
+const DB = {
+  async get(key,def){
+    const t = TABLE[key];
+    if(!t){ return (key in MEM) ? MEM[key] : def; }
+    try{
+      const {data,error} = await sb.from(t).select("*");
+      if(error){ console.error("select "+t,error); return def; }
+      return (data||[]).map(MAP[t].toApp);
+    }catch(e){ console.error("select "+t,e); return def; }
+  },
+  async set(key,val){
+    const t = TABLE[key];
+    if(!t){ MEM[key]=val; return; }
+    const pk = PK[t];
+    try{
+      const rows = (val||[]).map(MAP[t].toRow);
+      if(rows.length){
+        const {error} = await sb.from(t).upsert(rows,{onConflict:pk});
+        if(error) console.error("upsert "+t,error);
+      }
+      const keep = rows.map(r=>String(r[pk]));
+      const listStr = "(" + (keep.length?keep:["__none__"]).map(v=>JSON.stringify(v)).join(",") + ")";
+      const {error:delErr} = await sb.from(t).delete().not(pk,"in",listStr);
+      if(delErr) console.error("delete "+t,delErr);
+    }catch(e){ console.error("save "+t,e); }
+  }
+};
+const STATE = {funcs:[],lanc:[],ferias:[],auth:null,user:null,view:"inicio",editingId:null,
+  flt:{q:"",mes:"",tipo:"",dep:""}};
+
+/* utilidades */
+const $=s=>document.querySelector(s);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const yOf=iso=>iso?+iso.slice(0,4):0;
+const mOf=iso=>iso?+iso.slice(5,7):0;
+function fmtBR(iso){ if(!iso) return "—"; const p=iso.split("-"); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:iso; }
+function obscure(s){ return btoa(unescape(encodeURIComponent("agx::"+s))); }
+function diffDias(a,b){ if(!a||!b) return ""; const d=(new Date(b)-new Date(a))/86400000; return isFinite(d)?Math.round(d):""; }
+function edate(iso,months){ if(!iso) return ""; const d=new Date(iso+"T00:00:00"); const day=d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth()+months); const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  d.setDate(Math.min(day,last)); return d.toISOString().slice(0,10); }
+function funcByMat(m){ return STATE.funcs.find(f=>String(f.matricula)===String(m)); }
+
+/* toast */
+function toast(msg,type){ const t=document.createElement("div"); t.className="toast"+(type==="err"?" err":"");
+  const ic=type==="err"?'<path d="M12 8v5M12 16h0M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>':'<path d="M20 6 9 17l-5-5"/>';
+  t.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+ic+'</svg>'+esc(msg);
+  $("#toasts").appendChild(t); setTimeout(()=>{t.style.transition="opacity .3s,transform .3s";t.style.opacity="0";t.style.transform="translateY(8px)";setTimeout(()=>t.remove(),300);},2600); }
+
+/* ====================== CÁLCULOS (Dashboard) ====================== */
+function lancAno(){ return STATE.lanc.filter(l=>yOf(l.data)===YEAR); }
+function ativos(){ return STATE.funcs.filter(f=>(f.status||"Ativo")==="Ativo"); }
+function sumDias(filterFn){ return lancAno().filter(filterFn).reduce((s,l)=>s+(+l.dias||0),0); }
+function kpis(){
+  const faltas=sumDias(l=>l.tipo==="F"||l.tipo==="FJ");
+  const atest =sumDias(l=>l.tipo==="AT");
+  const fer   =sumDias(l=>l.tipo==="FE");
+  const lic   =sumDias(l=>l.tipo==="LC");
+  const at=ativos().length;
+  const taxa = at>0 ? (faltas+atest)/(at*DIAS_UTEIS) : 0;
+  return {at,faltas,atest,fer,lic,taxa};
+}
+function matrizMesTipo(){
+  const tipos=["F","FJ","AT","FE","LC"]; const grid={}; tipos.forEach(t=>grid[t]=Array(12).fill(0));
+  lancAno().forEach(l=>{ if(grid[l.tipo]) grid[l.tipo][mOf(l.data)-1]+=(+l.dias||0); });
+  return {tipos,grid};
+}
+function porDepartamento(){
+  return DEPTS.map(dep=>{
+    const head=ativos().filter(f=>f.departamento===dep).length;
+    const f =sumDias(l=>l.departamento===dep&&(l.tipo==="F"||l.tipo==="FJ"));
+    const a =sumDias(l=>l.departamento===dep&&l.tipo==="AT");
+    const fe=sumDias(l=>l.departamento===dep&&l.tipo==="FE");
+    const lc=sumDias(l=>l.departamento===dep&&l.tipo==="LC");
+    const tot=f+a+fe+lc;
+    return {dep,head,f,a,fe,lc,tot,taxa:head>0?tot/(head*DIAS_UTEIS):0};
+  }).filter(r=>r.head>0||r.tot>0);
+}
+function porFuncionario(){
+  return STATE.funcs.map(fn=>{
+    const meses=Array(12).fill(0);
+    lancAno().filter(l=>String(l.matricula)===String(fn.matricula)).forEach(l=>meses[mOf(l.data)-1]+=(+l.dias||0));
+    return {...fn,meses,total:meses.reduce((a,b)=>a+b,0)};
+  }).sort((a,b)=>b.total-a.total||a.nome.localeCompare(b.nome));
+}
+
+/* ====================== NAVEGAÇÃO ====================== */
+function go(view){
+  STATE.view=view; STATE.editingId=null;
+  document.querySelectorAll(".nav-item").forEach(b=>b.classList.toggle("active",b.dataset.nav===view));
+  $("#pageTitle").textContent=PAGE_INFO[view].t; $("#pageSub").textContent=PAGE_INFO[view].s;
+  closeSidebar(); window.scrollTo(0,0);
+  ({inicio:renderInicio,lancar:renderLancar,lancamentos:renderLancamentos,funcionarios:renderFuncionarios,ferias:renderFerias}[view])();
+}
+const EMPTY=(title,sub)=>`<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h10"/></svg><h4>${title}</h4><p>${sub}</p></div>`;
+
+/* ====================== VIEW: INÍCIO ====================== */
+function renderInicio(){
+  const k=kpis(); const tiles=[
+    {lab:"Funcionários ativos",val:k.at,unit:"",c:"var(--leaf)"},
+    {lab:"Faltas",val:k.faltas,unit:"dias",c:"var(--clay)"},
+    {lab:"Atestados",val:k.atest,unit:"dias",c:"var(--info)"},
+    {lab:"Férias",val:k.fer,unit:"dias",c:"var(--leaf)"},
+    {lab:"Licenças",val:k.lic,unit:"dias",c:"#7a52d6"},
+    {lab:"Taxa absenteísmo",val:(k.taxa*100).toFixed(2).replace(".",",")+"%",unit:"",c:"var(--amber)"}
+  ];
+  const mt=matrizMesTipo(), totMes=Array(12).fill(0); let totGeral=0;
+  const linhasMT=mt.tipos.map(tp=>{
+    const cells=mt.grid[tp].map((v,i)=>{totMes[i]+=v;return `<td class="num">${v||"—"}</td>`;}).join("");
+    const tt=mt.grid[tp].reduce((a,b)=>a+b,0); totGeral+=tt;
+    return `<tr><td><span class="chip ${TIPOS[tp].cls}"><span class="cd"></span>${TIPOS[tp].label} (${tp})</span></td>${cells}<td class="num">${tt||"—"}</td></tr>`;
+  }).join("");
+  const linhaTotMT=`<tr class="total-row"><td>TOTAL GERAL</td>${totMes.map(v=>`<td class="num">${v||"—"}</td>`).join("")}<td class="num">${totGeral||"—"}</td></tr>`;
+
+  const dep=porDepartamento(); const totDias=dep.reduce((s,r)=>s+r.tot,0);
+  const linhasDep=dep.map(r=>`<tr><td>${esc(r.dep)}</td><td class="num">${r.head}</td><td class="num">${r.f||"—"}</td><td class="num">${r.a||"—"}</td><td class="num">${r.fe||"—"}</td><td class="num">${r.lc||"—"}</td><td class="num">${r.tot||"—"}</td><td class="num">${totDias>0?((r.tot/totDias)*100).toFixed(0)+"%":"0%"}</td><td class="num">${(r.taxa*100).toFixed(2).replace(".",",")}%</td></tr>`).join("");
+
+  const pf=porFuncionario();
+  const heatRows=pf.map(r=>{
+    const cells=r.meses.map(v=>{const cls=v===0?"h0":v<=3?"h1":"h2";return `<td><span class="hc ${cls}">${v||"·"}</span></td>`;}).join("");
+    return `<tr><td class="nm">${esc(r.nome)}</td><td class="dp"><span class="mat-chip">${esc(r.matricula)}</span></td>${cells}<td><span class="hc tot">${r.total||"·"}</span></td></tr>`;
+  }).join("");
+
+  $("#view").innerHTML=`
+  <div class="view-head"><h2>Painel geral</h2><p>Indicadores calculados automaticamente a partir dos lançamentos · exercício 2026</p></div>
+  <div class="qa-grid">
+    <button class="qa" onclick="go('lancar')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg></div><h3>Lançar ausência</h3><p>Registrar falta, atestado, férias ou licença</p></button>
+    <button class="qa" onclick="go('ferias')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 18h16M6 18c0-5 3-8 6-9M12 9c2-3 6-4 9-3-1 4-4 6-7 6" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3>Programar férias</h3><p>Definir início, fim e acompanhar prazos</p></button>
+    <button class="qa" onclick="go('funcionarios')"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.6-3 2.9-4.5 5.5-4.5S14 16 14.5 19" stroke-linecap="round"/></svg></div><h3>Funcionários</h3><p>Cadastrar e gerenciar a equipe</p></button>
+  </div>
+  <div class="kpi-grid">${tiles.map(t=>`<div class="kpi"><div class="lab"><span class="dot" style="background:${t.c}"></span>${t.lab}</div><div class="val">${t.val}<span class="unit">${t.unit}</span></div><div class="acc">acumulado 2026</div></div>`).join("")}</div>
+
+  <div class="panel"><div class="panel-h"><h3>Ausências por mês e tipo</h3><span class="note">em dias</span></div>
+    <div class="panel-b"><div class="tbl-wrap"><table><thead><tr><th>Tipo de ausência</th>${MESES.map(m=>`<th class="num">${m}</th>`).join("")}<th class="num">Total</th></tr></thead><tbody>${linhasMT}${linhaTotMT}</tbody></table></div></div></div>
+
+  <div class="panel"><div class="panel-h"><h3>Ausências por departamento</h3><span class="note">todos os tipos · em dias</span></div>
+    <div class="panel-b"><div class="tbl-wrap"><table><thead><tr><th>Departamento</th><th class="num">Func.</th><th class="num">Faltas</th><th class="num">Atestados</th><th class="num">Férias</th><th class="num">Licenças</th><th class="num">Total dias</th><th class="num">% total</th><th class="num">Taxa abs.</th></tr></thead><tbody>${linhasDep||`<tr><td colspan="9" class="empty" style="padding:24px">Sem dados.</td></tr>`}</tbody></table></div></div></div>
+
+  <div class="panel"><div class="panel-h"><h3>Total de ausências por funcionário</h3><span class="spacer"></span><span class="note"><span class="hc h1" style="width:20px;height:18px;font-size:0;vertical-align:middle"></span> 1–3 dias &nbsp; <span class="hc h2" style="width:20px;height:18px;font-size:0;vertical-align:middle"></span> 4+ dias</span></div>
+    <div class="panel-b"><div class="tbl-wrap"><table class="heat"><thead><tr><th>Funcionário</th><th>Matr.</th>${MESES.map(m=>`<th>${m}</th>`).join("")}<th>Total</th></tr></thead><tbody>${heatRows}</tbody></table></div></div></div>`;
+}
+
+/* ====================== VIEW: LANÇAR ====================== */
+function renderLancar(){
+  const ed=STATE.editingId?STATE.lanc.find(l=>l.id===STATE.editingId):null;
+  const optsFunc=STATE.funcs.slice().sort((a,b)=>a.nome.localeCompare(b.nome))
+    .map(f=>`<option value="${esc(f.matricula)}" ${ed&&String(ed.matricula)===String(f.matricula)?"selected":""}>${esc(f.matricula)} — ${esc(f.nome)}</option>`).join("");
+  const optsTipo=Object.keys(TIPOS).map(t=>`<option value="${t}" ${ed&&ed.tipo===t?"selected":""}>${t} — ${TIPOS[t].label}</option>`).join("");
+  const optsDep=DEPTS.map(d=>`<option ${ed&&ed.departamento===d?"selected":""}>${d}</option>`).join("");
+  const optsLoc=LOCS.map(l=>`<option ${ed&&ed.localidade===l?"selected":""}>${l}</option>`).join("");
+
+  $("#view").innerHTML=`
+  <div class="view-head"><h2>${ed?"Editar lançamento":"Lançar ausência"}</h2><p>Selecione o funcionário e preencha os campos. Os dados ficam salvos para consulta.</p></div>
+  ${ed?`<div class="editing-banner"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Editando registro de ${esc(ed.nome)} · ${fmtBR(ed.data)}</div>`:""}
+  <div class="form-card">
+    <div class="legend">${Object.keys(TIPOS).map(t=>`<span class="chip ${TIPOS[t].cls}"><span class="cd"></span>${t} = ${TIPOS[t].label}</span>`).join("")}</div>
+    <div class="form-grid">
+      <div class="field"><label>Matrícula / Funcionário <span class="req">*</span></label><select id="f-mat"><option value="">Selecione…</option>${optsFunc}</select></div>
+      <div class="field"><label>Nome</label><input id="f-nome" readonly placeholder="Preenchido automaticamente" value="${ed?esc(ed.nome):""}" style="background:#f7faf7;color:var(--muted)"></div>
+      <div class="field"><label>Data <span class="req">*</span></label><input id="f-data" type="date" value="${ed?ed.data:""}"></div>
+      <div class="field"><label>Tipo <span class="req">*</span></label><select id="f-tipo"><option value="">Selecione…</option>${optsTipo}</select></div>
+      <div class="field"><label>Dias <span class="req">*</span></label><input id="f-dias" type="number" min="1" step="1" value="${ed?ed.dias:1}"></div>
+      <div class="field"><label>Departamento</label><select id="f-dep">${optsDep}</select></div>
+      <div class="field"><label>Localidade</label><select id="f-loc">${optsLoc}</select></div>
+      <div class="field full"><label>Observações</label><textarea id="f-obs" rows="2" placeholder="Opcional">${ed?esc(ed.obs):""}</textarea></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-primary" id="f-save">${ed?"Atualizar lançamento":"Salvar lançamento"}</button>
+      ${ed?`<button class="btn btn-ghost" onclick="go('lancar')">Cancelar</button>`:`<button class="btn btn-ghost" id="f-clear">Limpar</button>`}
+    </div>
+  </div>`;
+
+  const matSel=$("#f-mat");
+  matSel.addEventListener("change",()=>{ const f=funcByMat(matSel.value);
+    if(f){ $("#f-nome").value=f.nome; $("#f-dep").value=f.departamento; $("#f-loc").value=f.localidade; } else $("#f-nome").value=""; });
+  $("#f-save").addEventListener("click",saveLanc);
+  if($("#f-clear")) $("#f-clear").addEventListener("click",()=>renderLancar());
+}
+async function saveLanc(){
+  const mat=$("#f-mat").value, data=$("#f-data").value, tipo=$("#f-tipo").value, dias=+$("#f-dias").value;
+  if(!mat) return toast("Selecione o funcionário.","err");
+  if(!data) return toast("Informe a data.","err");
+  if(!tipo) return toast("Selecione o tipo de ausência.","err");
+  if(!dias||dias<1) return toast("Informe a quantidade de dias.","err");
+  const f=funcByMat(mat);
+  const rec={ matricula:mat, nome:f?f.nome:$("#f-nome").value, data, tipo, dias,
+    departamento:$("#f-dep").value, localidade:$("#f-loc").value, obs:$("#f-obs").value.trim() };
+  if(STATE.editingId){ const i=STATE.lanc.findIndex(l=>l.id===STATE.editingId); if(i>=0) STATE.lanc[i]={...STATE.lanc[i],...rec}; STATE.editingId=null; }
+  else STATE.lanc.unshift({id:uid(),...rec});
+  await DB.set(K.lanc,STATE.lanc);
+  toast(STATE.view&&rec?"Lançamento salvo com sucesso.":"Salvo.");
+  go("lancamentos");
+}
+
+/* ====================== VIEW: LANÇAMENTOS ====================== */
+function renderLancamentos(){
+  const f=STATE.flt;
+  const filtered=STATE.lanc.filter(l=>{
+    if(f.mes&&mOf(l.data)!==+f.mes) return false;
+    if(f.tipo&&l.tipo!==f.tipo) return false;
+    if(f.dep&&l.departamento!==f.dep) return false;
+    if(f.q){ const q=f.q.toLowerCase(); if(!(String(l.nome).toLowerCase().includes(q)||String(l.matricula).toLowerCase().includes(q))) return false; }
+    return true;
+  }).sort((a,b)=>b.data.localeCompare(a.data));
+  const totDias=filtered.reduce((s,l)=>s+(+l.dias||0),0);
+
+  $("#view").innerHTML=`
+  <div class="view-head"><h2>Lançamentos</h2><p>${STATE.lanc.length} registro(s) no total · ${filtered.length} exibido(s) · ${totDias} dia(s)</p></div>
+  <div class="toolbar">
+    <div class="search grow"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3" stroke-linecap="round"/></svg><input id="flt-q" placeholder="Buscar por nome ou matrícula" value="${esc(f.q)}"></div>
+    <select class="flt" id="flt-mes"><option value="">Todos os meses</option>${MESES.map((m,i)=>`<option value="${i+1}" ${+f.mes===i+1?"selected":""}>${m}</option>`).join("")}</select>
+    <select class="flt" id="flt-tipo"><option value="">Todos os tipos</option>${Object.keys(TIPOS).map(t=>`<option value="${t}" ${f.tipo===t?"selected":""}>${t} — ${TIPOS[t].label}</option>`).join("")}</select>
+    <select class="flt" id="flt-dep"><option value="">Todos os deptos</option>${DEPTS.map(d=>`<option ${f.dep===d?"selected":""}>${d}</option>`).join("")}</select>
+    <button class="btn btn-primary btn-sm" onclick="go('lancar')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Novo</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportExcel()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg>Exportar Excel</button>
+  </div>
+  <div class="panel"><div class="panel-b"><div class="tbl-wrap">
+    <table><thead><tr><th>Matr.</th><th>Nome</th><th class="num">Data</th><th>Tipo</th><th class="num">Dias</th><th>Departamento</th><th>Localidade</th><th>Obs.</th><th></th></tr></thead>
+    <tbody>${ filtered.length? filtered.map(l=>`<tr>
+      <td><span class="mat-chip">${esc(l.matricula)}</span></td>
+      <td>${esc(l.nome)}</td>
+      <td class="num">${fmtBR(l.data)}</td>
+      <td><span class="chip ${TIPOS[l.tipo]?TIPOS[l.tipo].cls:""}"><span class="cd"></span>${l.tipo}</span></td>
+      <td class="num">${l.dias}</td>
+      <td>${esc(l.departamento)}</td>
+      <td>${esc(l.localidade)}</td>
+      <td style="white-space:normal;max-width:200px;color:var(--muted)">${esc(l.obs)||"—"}</td>
+      <td><div class="row-actions">
+        <button title="Editar" onclick="editLanc('${l.id}')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="del" title="Excluir" onclick="askDelLanc('${l.id}')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div></td></tr>`).join("") : `<tr><td colspan="9">${EMPTY("Nenhum lançamento encontrado","Ajuste os filtros ou registre uma nova ausência.")}</td></tr>` }</tbody></table>
+  </div></div></div>`;
+
+  const apply=()=>{ STATE.flt={q:$("#flt-q").value,mes:$("#flt-mes").value,tipo:$("#flt-tipo").value,dep:$("#flt-dep").value}; renderLancamentos(); };
+  $("#flt-q").addEventListener("input",()=>{STATE.flt.q=$("#flt-q").value; clearTimeout(window._fltT); window._fltT=setTimeout(renderLancamentos,250);});
+  ["flt-mes","flt-tipo","flt-dep"].forEach(id=>$("#"+id).addEventListener("change",apply));
+}
+function editLanc(id){ STATE.editingId=id; go("lancar"); STATE.editingId=id; renderLancar(); }
+function askDelLanc(id){ const l=STATE.lanc.find(x=>x.id===id); if(!l)return;
+  confirmModal("Excluir lançamento?",`Remover o registro de <b>${esc(l.nome)}</b> (${TIPOS[l.tipo].label}, ${fmtBR(l.data)})? Esta ação não pode ser desfeita.`,async()=>{
+    STATE.lanc=STATE.lanc.filter(x=>x.id!==id); await DB.set(K.lanc,STATE.lanc); toast("Lançamento excluído."); renderLancamentos();
+  }); }
+
+/* ====================== VIEW: FUNCIONÁRIOS ====================== */
+function renderFuncionarios(){
+  const list=STATE.funcs.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+  $("#view").innerHTML=`
+  <div class="view-head"><h2>Funcionários</h2><p>${list.length} funcionário(s) cadastrado(s) · ${ativos().length} ativo(s)</p></div>
+  <div class="toolbar"><div class="grow"></div>
+    <button class="btn btn-primary btn-sm" onclick="funcModal()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14" stroke-linecap="round"/></svg>Novo funcionário</button>
+    <button class="btn btn-ghost btn-sm" onclick="exportExcel()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg>Exportar Excel</button>
+  </div>
+  <div class="panel"><div class="panel-b"><div class="tbl-wrap">
+    <table><thead><tr><th>Matr.</th><th>Nome completo</th><th>Cargo</th><th>Departamento</th><th>Localidade</th><th>Status</th><th></th></tr></thead>
+    <tbody>${ list.length? list.map(f=>`<tr>
+      <td><span class="mat-chip">${esc(f.matricula)}</span></td><td>${esc(f.nome)}</td><td style="color:var(--muted)">${esc(f.cargo)}</td>
+      <td>${esc(f.departamento)}</td><td>${esc(f.localidade)}</td><td><span class="st st-${esc(f.status||"Ativo")}">${esc(f.status||"Ativo")}</span></td>
+      <td><div class="row-actions">
+        <button title="Editar" onclick="funcModal('${esc(f.matricula)}')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+        <button class="del" title="Excluir" onclick="askDelFunc('${esc(f.matricula)}')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div></td></tr>`).join("") : `<tr><td colspan="7">${EMPTY("Nenhum funcionário","Cadastre o primeiro funcionário.")}</td></tr>` }</tbody></table>
+  </div></div></div>`;
+}
+function funcModal(mat){
+  const f=mat?funcByMat(mat):null; const editing=!!f;
+  openModal(editing?"Editar funcionário":"Novo funcionário",`
+    <div class="form-grid">
+      <div class="field"><label>Matrícula <span class="req">*</span></label><input id="m-mat" value="${f?esc(f.matricula):""}" ${editing?"readonly style='background:#f7faf7;color:var(--muted)'":""} placeholder="ex.: 81"></div>
+      <div class="field"><label>Status</label><select id="m-status"><option ${f&&f.status==="Ativo"?"selected":""}>Ativo</option><option ${f&&f.status==="Inativo"?"selected":""}>Inativo</option></select></div>
+      <div class="field full"><label>Nome completo <span class="req">*</span></label><input id="m-nome" value="${f?esc(f.nome):""}"></div>
+      <div class="field full"><label>Cargo</label><input id="m-cargo" value="${f?esc(f.cargo):""}"></div>
+      <div class="field"><label>Departamento</label><select id="m-dep">${DEPTS.map(d=>`<option ${f&&f.departamento===d?"selected":""}>${d}</option>`).join("")}</select></div>
+      <div class="field"><label>Localidade</label><select id="m-loc">${LOCS.map(l=>`<option ${f&&f.localidade===l?"selected":""}>${l}</option>`).join("")}</select></div>
+    </div>`,
+    editing?"Salvar alterações":"Cadastrar",async()=>{
+      const matv=$("#m-mat").value.trim(), nome=$("#m-nome").value.trim();
+      if(!matv) return toast("Informe a matrícula.","err");
+      if(!nome) return toast("Informe o nome.","err");
+      if(!editing && funcByMat(matv)) return toast("Já existe funcionário com esta matrícula.","err");
+      const rec={matricula:matv,nome,cargo:$("#m-cargo").value.trim(),departamento:$("#m-dep").value,localidade:$("#m-loc").value,status:$("#m-status").value};
+      if(editing){ const i=STATE.funcs.findIndex(x=>String(x.matricula)===String(mat)); STATE.funcs[i]=rec;
+        STATE.lanc.forEach(l=>{ if(String(l.matricula)===String(mat)){ l.nome=rec.nome; } }); await DB.set(K.lanc,STATE.lanc); }
+      else STATE.funcs.push(rec);
+      await DB.set(K.funcs,STATE.funcs); closeModal(); toast(editing?"Funcionário atualizado.":"Funcionário cadastrado."); renderFuncionarios();
+      return true;
+    });
+}
+function askDelFunc(mat){ const f=funcByMat(mat); if(!f)return;
+  const n=STATE.lanc.filter(l=>String(l.matricula)===String(mat)).length;
+  confirmModal("Excluir funcionário?",`Remover <b>${esc(f.nome)}</b> do cadastro?${n?` Há <b>${n}</b> lançamento(s) vinculado(s) que <b>não</b> serão apagados.`:""}`,async()=>{
+    STATE.funcs=STATE.funcs.filter(x=>String(x.matricula)!==String(mat)); await DB.set(K.funcs,STATE.funcs); toast("Funcionário excluído."); renderFuncionarios();
+  }); }
+
+/* ====================== VIEW: FÉRIAS ====================== */
+function renderFerias(){
+  // garante uma linha por funcionário ativo
+  const map={}; STATE.ferias.forEach(r=>map[r.matricula]=r);
+  STATE.funcs.forEach(f=>{ if(!map[f.matricula]) map[f.matricula]={matricula:f.matricula,nome:f.nome,departamento:f.departamento,ultimoDia:"",inicio:"",fim:"",status:"Pendente",obs:""}; });
+  STATE.ferias=STATE.funcs.map(f=>({...map[f.matricula],nome:f.nome,departamento:f.departamento}));
+  const list=STATE.ferias.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+
+  $("#view").innerHTML=`
+  <div class="view-head"><h2>Férias programadas</h2><p>Defina início e fim — os dias e o prazo limite são calculados automaticamente.</p></div>
+  <div class="toolbar"><div class="grow"></div>
+    <button class="btn btn-ghost btn-sm" onclick="exportExcel()"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14" stroke-linecap="round" stroke-linejoin="round"/></svg>Exportar Excel</button>
+  </div>
+  <div class="panel"><div class="panel-b"><div class="tbl-wrap">
+    <table><thead><tr><th>Matr.</th><th>Nome</th><th>Departamento</th><th class="num">Último dia</th><th class="num">Prazo limite</th><th class="num">Início</th><th class="num">Fim</th><th class="num">Dias</th><th>Status</th><th></th></tr></thead>
+    <tbody>${ list.map(r=>`<tr>
+      <td><span class="mat-chip">${esc(r.matricula)}</span></td><td>${esc(r.nome)}</td><td style="color:var(--muted)">${esc(r.departamento)}</td>
+      <td class="num">${fmtBR(r.ultimoDia)}</td><td class="num">${fmtBR(edate(r.ultimoDia,12))}</td>
+      <td class="num">${fmtBR(r.inicio)}</td><td class="num">${fmtBR(r.fim)}</td>
+      <td class="num">${diffDias(r.inicio,r.fim)===""?"—":diffDias(r.inicio,r.fim)}</td>
+      <td><span class="st st-${esc(r.status)}">${esc(r.status)}</span></td>
+      <td><div class="row-actions"><button title="Editar" onclick="feriasModal('${esc(r.matricula)}')"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div></td>
+    </tr>`).join("") }</tbody></table>
+  </div></div></div>`;
+}
+function feriasModal(mat){
+  const r=STATE.ferias.find(x=>String(x.matricula)===String(mat)); if(!r)return;
+  openModal("Férias · "+esc(r.nome),`
+    <div class="form-grid">
+      <div class="field"><label>Último dia de férias</label><input id="v-ultimo" type="date" value="${r.ultimoDia||""}"><div class="help">Base para o prazo limite (calculado +12 meses).</div></div>
+      <div class="field"><label>Prazo limite</label><input id="v-prazo" readonly value="${fmtBR(edate(r.ultimoDia,12))}" style="background:#f7faf7;color:var(--muted)"></div>
+      <div class="field"><label>Início</label><input id="v-inicio" type="date" value="${r.inicio||""}"></div>
+      <div class="field"><label>Fim</label><input id="v-fim" type="date" value="${r.fim||""}"></div>
+      <div class="field"><label>Dias</label><input id="v-dias" readonly value="${diffDias(r.inicio,r.fim)}" style="background:#f7faf7;color:var(--muted)"></div>
+      <div class="field"><label>Status</label><select id="v-status">${STATUS_FERIAS.map(s=>`<option ${r.status===s?"selected":""}>${s}</option>`).join("")}</select></div>
+      <div class="field full"><label>Observações</label><textarea id="v-obs" rows="2">${esc(r.obs)}</textarea></div>
+    </div>`,"Salvar",async()=>{
+      r.ultimoDia=$("#v-ultimo").value; r.inicio=$("#v-inicio").value; r.fim=$("#v-fim").value;
+      r.status=$("#v-status").value; r.obs=$("#v-obs").value.trim();
+      const i=STATE.ferias.findIndex(x=>String(x.matricula)===String(mat)); STATE.ferias[i]=r;
+      await DB.set(K.ferias,STATE.ferias); closeModal(); toast("Férias atualizadas."); renderFerias(); return true;
+    });
+  const upd=()=>{ $("#v-prazo").value=fmtBR(edate($("#v-ultimo").value,12)); $("#v-dias").value=diffDias($("#v-inicio").value,$("#v-fim").value); };
+  $("#v-ultimo").addEventListener("change",upd); $("#v-inicio").addEventListener("change",upd); $("#v-fim").addEventListener("change",upd);
+}
+
+/* ====================== MODAIS ====================== */
+let modalConfirmFn=null;
+function openModal(title,bodyHTML,okLabel,onOk){
+  modalConfirmFn=onOk;
+  const bg=document.createElement("div"); bg.className="modal-bg"; bg.id="modalBg";
+  bg.innerHTML=`<div class="modal"><div class="modal-h"><h3>${title}</h3><button class="icon-btn x" onclick="closeModal()"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6 6 18" stroke-linecap="round"/></svg></button></div><div class="modal-b">${bodyHTML}</div><div class="modal-f"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="modalOk">${okLabel}</button></div></div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener("click",e=>{if(e.target===bg)closeModal();});
+  $("#modalOk").addEventListener("click",async()=>{ if(modalConfirmFn) await modalConfirmFn(); });
+}
+function confirmModal(title,msg,onOk){
+  modalConfirmFn=onOk;
+  const bg=document.createElement("div"); bg.className="modal-bg"; bg.id="modalBg";
+  bg.innerHTML=`<div class="modal" style="max-width:420px"><div class="modal-b"><div class="confirm-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h0M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" stroke-linecap="round" stroke-linejoin="round"/></svg></div><h3 style="font-family:Archivo;font-size:18px;margin:0 0 6px">${title}</h3><p style="color:var(--muted);font-size:14px;margin:0">${msg}</p></div><div class="modal-f"><button class="btn btn-ghost" onclick="closeModal()">Cancelar</button><button class="btn btn-danger" id="modalOk">Excluir</button></div></div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener("click",e=>{if(e.target===bg)closeModal();});
+  $("#modalOk").addEventListener("click",async()=>{ const fn=modalConfirmFn; closeModal(); if(fn) await fn(); });
+}
+function closeModal(){ const m=$("#modalBg"); if(m)m.remove(); modalConfirmFn=null; }
+
+/* config / senha */
+function cfgModal(){
+  openModal("Conta e segurança",`
+    <p style="margin:0 0 16px;color:var(--muted);font-size:13.5px">Usuário <b style="color:var(--ink)">${esc(STATE.auth.user)}</b>. Para alterar a senha, preencha abaixo.</p>
+    <div class="field"><label>Senha atual</label><input id="c-cur" type="password" placeholder="••••••••"></div>
+    <div class="field"><label>Nova senha</label><input id="c-new" type="password" placeholder="mínimo 4 caracteres"></div>
+    <div class="field"><label>Confirmar nova senha</label><input id="c-cf" type="password"></div>`,
+    "Alterar senha",async()=>{
+      const cur=$("#c-cur").value,nw=$("#c-new").value,cf=$("#c-cf").value;
+      if(obscure(cur)!==STATE.auth.pass) return toast("Senha atual incorreta.","err");
+      if(nw.length<4) return toast("A nova senha deve ter ao menos 4 caracteres.","err");
+      if(nw!==cf) return toast("As senhas não conferem.","err");
+      STATE.auth.pass=obscure(nw); await DB.set(K.auth,STATE.auth); closeModal(); toast("Senha alterada com sucesso."); return true;
+    });
+}
+
+/* ====================== EXPORTAÇÃO ====================== */
+function exportExcel(){
+  try{
+    if(typeof XLSX==="undefined"){ exportCSV(); return; }
+    const wb=XLSX.utils.book_new();
+    // Lançamentos
+    const aoaL=[["AGROMIX — LANÇAMENTO DE AUSÊNCIAS"],["Tipos: F = Falta | FJ = Falta Justificada | FE = Férias | AT = Atestado | LC = Licença"],[],
+      ["Matrícula","Nome","Data","Tipo","Dias","Departamento","Localidade","Observações"]];
+    STATE.lanc.slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(l=>aoaL.push([l.matricula,l.nome,fmtBR(l.data),l.tipo,l.dias,l.departamento,l.localidade,l.obs]));
+    const wsL=XLSX.utils.aoa_to_sheet(aoaL); wsL["!cols"]=[{wch:10},{wch:34},{wch:12},{wch:7},{wch:6},{wch:18},{wch:16},{wch:24}];
+    XLSX.utils.book_append_sheet(wb,wsL,"Lançamentos");
+    // Funcionários
+    const aoaF=[["AGROMIX — FUNCIONÁRIOS ATIVOS"],["Matrícula","Nome Completo","Cargo","Departamento","Localidade","Status"]];
+    STATE.funcs.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).forEach(f=>aoaF.push([f.matricula,f.nome,f.cargo,f.departamento,f.localidade,f.status||"Ativo"]));
+    const wsF=XLSX.utils.aoa_to_sheet(aoaF); wsF["!cols"]=[{wch:10},{wch:34},{wch:30},{wch:18},{wch:16},{wch:10}];
+    XLSX.utils.book_append_sheet(wb,wsF,"Funcionários");
+    // Por Funcionário
+    const pf=porFuncionario();
+    const aoaP=[["AGROMIX — TOTAL DE AUSÊNCIAS POR FUNCIONÁRIO"],["Matrícula","Nome Completo","Departamento",...MESES,"Total"]];
+    pf.forEach(r=>aoaP.push([r.matricula,r.nome,r.departamento,...r.meses,r.total]));
+    const totCol=Array(12).fill(0); let tg=0; pf.forEach(r=>{r.meses.forEach((v,i)=>totCol[i]+=v); tg+=r.total;});
+    aoaP.push(["TOTAL GERAL","","",...totCol,tg]);
+    const wsP=XLSX.utils.aoa_to_sheet(aoaP); wsP["!cols"]=[{wch:10},{wch:34},{wch:18},...MESES.map(()=>({wch:5})),{wch:7}];
+    XLSX.utils.book_append_sheet(wb,wsP,"Por Funcionário");
+    // Férias
+    const aoaV=[["AGROMIX — CONTROLE DE FÉRIAS PROGRAMADAS"],["Matrícula","Nome","Departamento","Último dia Férias","Prazo Limite","Início","Fim","Dias","Status","Observações"]];
+    STATE.ferias.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).forEach(r=>aoaV.push([r.matricula,r.nome,r.departamento,fmtBR(r.ultimoDia),fmtBR(edate(r.ultimoDia,12)),fmtBR(r.inicio),fmtBR(r.fim),diffDias(r.inicio,r.fim),r.status,r.obs]));
+    const wsV=XLSX.utils.aoa_to_sheet(aoaV); wsV["!cols"]=[{wch:10},{wch:34},{wch:18},{wch:16},{wch:14},{wch:12},{wch:12},{wch:6},{wch:12},{wch:22}];
+    XLSX.utils.book_append_sheet(wb,wsV,"Férias");
+    // Dashboard
+    const k=kpis(); const mt=matrizMesTipo(); const dep=porDepartamento();
+    const aoaD=[["AGROMIX | CONTROLE DE ABSENTEÍSMO | 2026"],[],
+      ["INDICADORES GERAIS — ACUMULADO 2026"],
+      ["Funcionários Ativos","Faltas (dias)","Atestados (dias)","Férias (dias)","Licenças (dias)","Taxa Absenteísmo"],
+      [k.at,k.faltas,k.atest,k.fer,k.lic,(k.taxa*100).toFixed(2).replace(".",",")+"%"],[],
+      ["AUSÊNCIAS POR MÊS E TIPO (em dias)"],["Tipo de Ausência",...MESES,"Total"]];
+    mt.tipos.forEach(tp=>{const tt=mt.grid[tp].reduce((a,b)=>a+b,0); aoaD.push([`${TIPOS[tp].label} (${tp})`,...mt.grid[tp],tt]);});
+    const totMes=Array(12).fill(0); mt.tipos.forEach(tp=>mt.grid[tp].forEach((v,i)=>totMes[i]+=v));
+    aoaD.push(["TOTAL GERAL",...totMes,totMes.reduce((a,b)=>a+b,0)],[],
+      ["AUSÊNCIAS POR DEPARTAMENTO (em dias)"],["Departamento","Funcionários","Faltas","Atestados","Férias","Licenças","Total Dias","Taxa Abs."]);
+    dep.forEach(r=>aoaD.push([r.dep,r.head,r.f,r.a,r.fe,r.lc,r.tot,(r.taxa*100).toFixed(2).replace(".",",")+"%"]));
+    const wsD=XLSX.utils.aoa_to_sheet(aoaD); wsD["!cols"]=[{wch:22},...MESES.map(()=>({wch:6})),{wch:8}];
+    XLSX.utils.book_append_sheet(wb,wsD,"Dashboard");
+
+    XLSX.writeFile(wb,`AGROMIX_Absenteismo_2026_${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast("Excel exportado.");
+  }catch(e){ console.error(e); toast("Falha ao gerar Excel — exportando CSV.","err"); exportCSV(); }
+}
+function exportCSV(){
+  const rows=[["Matricula","Nome","Data","Tipo","Dias","Departamento","Localidade","Observacoes"]];
+  STATE.lanc.slice().sort((a,b)=>a.data.localeCompare(b.data)).forEach(l=>rows.push([l.matricula,l.nome,fmtBR(l.data),l.tipo,l.dias,l.departamento,l.localidade,l.obs]));
+  const csv="\uFEFF"+rows.map(r=>r.map(c=>`"${String(c==null?"":c).replace(/"/g,'""')}"`).join(";")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8;"}); const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download=`AGROMIX_Lancamentos_${new Date().toISOString().slice(0,10)}.csv`; a.click();
+  toast("CSV exportado.");
+}
+
+/* ====================== LOGIN / SESSÃO ====================== */
+async function tryLogin(){
+  const u=$("#lg-user").value.trim(), p=$("#lg-pass").value;
+  if(!u||!p){ $("#lg-err").textContent="Informe usuário e senha."; return; }
+  if(u.toLowerCase()!==String(STATE.auth.user).toLowerCase() || obscure(p)!==STATE.auth.pass){
+    $("#lg-err").textContent="Usuário ou senha incorretos."; return;
+  }
+  await DB.set(K.session,{user:STATE.auth.user,ts:Date.now()});
+  STATE.user=STATE.auth.user; enterApp();
+}
+function enterApp(){
+  $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+  const initial=String(STATE.user||"A").trim().charAt(0).toUpperCase();
+  $("#userAv").textContent=initial; $("#userName").textContent=STATE.user;
+  go("inicio");
+}
+async function logout(){ await DB.set(K.session,null); STATE.user=null;
+  $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
+  $("#lg-pass").value=""; $("#lg-err").textContent=""; }
+
+/* sidebar mobile */
+function openSidebar(){ $("#sidebar").classList.add("open"); const s=document.createElement("div"); s.className="scrim"; s.id="scrim"; s.onclick=closeSidebar; document.body.appendChild(s); }
+function closeSidebar(){ $("#sidebar").classList.remove("open"); const s=$("#scrim"); if(s)s.remove(); }
+
+/* ====================== INICIALIZAÇÃO ====================== */
+async function init(){
+  // listeners login registrados ANTES dos awaits para não ficarem bloqueados por lentidão de rede
+  $("#lg-btn").addEventListener("click",tryLogin);
+  $("#lg-pass").addEventListener("keydown",e=>{if(e.key==="Enter")tryLogin();});
+  $("#lg-user").addEventListener("keydown",e=>{if(e.key==="Enter")$("#lg-pass").focus();});
+  // listeners app
+  document.querySelectorAll(".nav-item").forEach(b=>b.addEventListener("click",()=>go(b.dataset.nav)));
+  $("#logoutBtn").addEventListener("click",logout);
+  $("#cfgBtn").addEventListener("click",cfgModal);
+  $("#menuToggle").addEventListener("click",openSidebar);
+  document.addEventListener("keydown",e=>{if(e.key==="Escape")closeModal();});
+
+  // checagem de conexão com o Supabase (os dados são semeados pelo SQL de setup)
+  try{
+    const {error}=await sb.from("funcionarios").select("matricula",{count:"exact",head:true});
+    if(error){ console.error("conexao",error); setTimeout(()=>toast("Falha ao ler o Supabase. Rode o SQL de setup e confira a URL/chave."),500); }
+  }catch(e){ console.error("conexao",e); setTimeout(()=>toast("Sem conexão com o Supabase. Confira a URL e a chave anon."),500); }
+  STATE.funcs =await DB.get(K.funcs,[]);
+  STATE.lanc  =await DB.get(K.lanc,[]);
+  STATE.ferias=await DB.get(K.ferias,[]);
+  STATE.auth  =await DB.get(K.auth,{user:"admin",pass:obscure("agromix2026")});
+
+  // sessão ativa? (12h)
+  const sess=await DB.get(K.session,null);
+  if(sess&&sess.user&&(Date.now()-sess.ts)<12*3600*1000){ STATE.user=sess.user; enterApp(); }
+}
+window.go=go; window.editLanc=editLanc; window.askDelLanc=askDelLanc;
+window.funcModal=funcModal; window.askDelFunc=askDelFunc; window.feriasModal=feriasModal;
+window.exportExcel=exportExcel; window.closeModal=closeModal;
+init();
+</script>
+</body>
+</html>
